@@ -60,6 +60,8 @@ func downloadFileRaw(path string, url string, hash *string) error {
 		return errors.Join(errors.New("failed to download "+url), err)
 	}
 
+	_ = file.Close()
+
 	if hash != nil {
 		valid, err := validateHash(path, *hash)
 		if err != nil {

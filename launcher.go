@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -333,6 +332,13 @@ func main() {
 	features["is_quick_play_multiplayer"] = false
 	features["is_quick_play_realms"] = false
 
+	var javaPath string
+	javaPath, err = downloadJdk(base, manifest.JavaVersion.MajorVersion)
+	if err != nil {
+		fmt.Printf("Failed to download Java %d: %s", manifest.JavaVersion.MajorVersion, err)
+		return
+	}
+
 	classpath, err := downloadLibraries(base, manifest.Libraries, features)
 	if err != nil {
 		fmt.Printf("Failed to download libraries: %s", err)
@@ -404,11 +410,22 @@ func main() {
 		}
 	}
 
-	process := exec.Command("/lib/jvm/jdk-17.0.5+8/bin/java", command...)
+	var java string
+	if runtime.GOOS == "windows" {
+		java = javaPath + "/bin/javaw.exe"
+	} else {
+		java = javaPath + "/bin/java"
+	}
+
+	process := execute(java, command...)
 	process.Stdout = os.Stdout
 	process.Stderr = os.Stderr
-	process.Start()
-	process.Wait()
+	result := process.Run()
+	if result == nil {
+		os.Exit(0)
+	} else {
+		os.Exit(result.(*exec.ExitError).ExitCode())
+	}
 }
 
 func downloadAssets(base string, version Manifest) error {
@@ -418,20 +435,10 @@ func downloadAssets(base string, version Manifest) error {
 		return errors.Join(errors.New("failed to download asset manifest"), err)
 	}
 
-	file, err := os.Open(jsonPath)
-	if err != nil {
-		return errors.Join(errors.New("failed to open assets file"), err)
-	}
-
-	buffer, err := io.ReadAll(file)
-	if err != nil {
-		return errors.Join(errors.New("failed to read assets file"), err)
-	}
-
 	var manifest AssetManifest
-	err = json.Unmarshal(buffer, &manifest)
+	err = readJson(jsonPath, &manifest)
 	if err != nil {
-		return errors.Join(errors.New("failed to parse assets file"), err)
+		return errors.Join(errors.New("failed to read asset manifest"), err)
 	}
 
 	channel := make(chan error)
